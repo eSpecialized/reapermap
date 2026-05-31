@@ -56,6 +56,73 @@ def _default_token_counter(text: str) -> int:
     return count_tokens(text, strategy="heuristic")
 
 
+def compute_pagerank(
+    graph: "nx.MultiDiGraph",
+    personalization: Optional[Dict[str, float]] = None,
+    alpha: float = 0.85,
+    max_iter: int = 100,
+    tol: float = 1.0e-6,
+) -> Dict[str, float]:
+    """Power-iteration PageRank over a ``MultiDiGraph``.
+
+    Implemented in pure Python on purpose: ``networkx.pagerank`` routes through a
+    SciPy/NumPy backend, which are intentionally *not* dependencies of this
+    offline, minimal-footprint package. Without them ``nx.pagerank`` raises at
+    runtime, which previously caused ranking to silently collapse to flat scores.
+
+    Parallel edges between two nodes are summed into a single transition weight
+    (i.e. the weight reflects the number of distinct shared identifiers between
+    two files). Dangling nodes (no out-edges) redistribute their mass according
+    to the teleport vector, matching standard PageRank semantics.
+    """
+    nodes = sorted(graph.nodes())
+    n = len(nodes)
+    if n == 0:
+        return {}
+
+    # Teleport / personalization vector ``p`` (normalized).
+    if personalization:
+        total = sum(max(0.0, personalization.get(node, 0.0)) for node in nodes)
+        if total > 0.0:
+            p = {node: max(0.0, personalization.get(node, 0.0)) / total for node in nodes}
+        else:
+            p = {node: 1.0 / n for node in nodes}
+    else:
+        p = {node: 1.0 / n for node in nodes}
+
+    # Aggregate parallel edges into per-(u, v) weights and per-node out weight.
+    edge_weights: Dict[Tuple[str, str], float] = defaultdict(float)
+    for u, v in graph.edges():
+        edge_weights[(u, v)] += 1.0
+
+    out_adj: Dict[str, List[Tuple[str, float]]] = defaultdict(list)
+    out_weight: Dict[str, float] = defaultdict(float)
+    for (u, v), w in edge_weights.items():
+        out_adj[u].append((v, w))
+        out_weight[u] += w
+
+    dangling_nodes = [node for node in nodes if out_weight[node] == 0.0]
+
+    x = {node: 1.0 / n for node in nodes}
+    for _ in range(max_iter):
+        x_last = x
+        x = {node: 0.0 for node in nodes}
+        dangle_sum = alpha * sum(x_last[node] for node in dangling_nodes)
+        for u in nodes:
+            ow = out_weight[u]
+            if ow <= 0.0:
+                continue
+            share = alpha * x_last[u] / ow
+            for v, w in out_adj[u]:
+                x[v] += share * w
+        for node in nodes:
+            x[node] += dangle_sum * p[node] + (1.0 - alpha) * p[node]
+        err = sum(abs(x[node] - x_last[node]) for node in nodes)
+        if err < n * tol:
+            break
+    return x
+
+
 # Cache of (parser, query) per language, keyed by language name. Building a
 # tree_sitter.Query is relatively expensive, so reuse across files.
 _PARSER_QUERY_CACHE: Dict[str, tuple] = {}
@@ -369,13 +436,22 @@ class RepoMap:
         if not graph.nodes():
             return [], file_report
 
-        try:
-            if personalization:
-                ranks = nx.pagerank(graph, personalization=personalization, alpha=0.85)
-            else:
-                ranks = {node: 1.0 for node in graph.nodes()}
-        except Exception:
+        has_edges = graph.number_of_edges() > 0
+        if not has_edges:
+            # No references means no centrality signal; use flat ranks.
             ranks = {node: 1.0 for node in graph.nodes()}
+        else:
+            try:
+                ranks = compute_pagerank(
+                    graph,
+                    personalization=personalization or None,
+                    alpha=0.85,
+                )
+            except Exception as err:  # pragma: no cover - defensive
+                self.output_handlers["warning"](
+                    f"PageRank failed ({err}); falling back to flat ranks"
+                )
+                ranks = {node: 1.0 for node in graph.nodes()}
 
         ranked_tags: List[Tuple[float, Tag]] = []
         for fname in included:
