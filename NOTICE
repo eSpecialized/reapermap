@@ -1,0 +1,33 @@
+# NOTICE
+
+This project (`privrepomap`) is an independent, clean-room reimplementation.
+It was written from scratch and does not copy source code from the projects
+below, but its **design** is derived from and inspired by them.
+
+## Design attribution
+
+- **RepoMapper** by Pete Davis (MIT License)
+  https://github.com/pdavis68/RepoMapper
+  The structural approach — tree-sitter tag extraction, a defs/refs graph,
+  PageRank ranking, and token-budgeted map rendering — follows the design
+  pioneered there.
+
+- **Aider** by Paul Gauthier and contributors (Apache-2.0 License)
+  https://github.com/Aider-AI/aider
+  The original repo-map concept (PageRank over a code graph + `TreeContext`
+  rendering via `grep-ast`) originates here.
+
+## Bundled data
+
+The `queries/` directory contains tree-sitter tags query files (`*.scm`).
+These are redistributed from the tree-sitter language grammars and the
+`tree-sitter-language-pack` / `tree-sitter-languages` collections, which are
+made available under permissive (MIT-style) licenses by their respective
+authors. They are data files, not source code of this project.
+
+## Differences from the original
+
+- Offline token estimation (no `tiktoken`, no network).
+- Strict privacy: `.gitignore`-aware scanning, secret-file skipping, and
+  regex redaction of secrets applied to all rendered output.
+- No telemetry, no cloud sync, no embeddings / NL semantic search.
