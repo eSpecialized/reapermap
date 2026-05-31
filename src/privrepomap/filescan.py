@@ -99,6 +99,49 @@ def is_secret_file(name: str) -> bool:
     return False
 
 
+# Directory names that signal a test tree.
+_TEST_DIR_NAMES = {"test", "tests", "testing", "__tests__", "spec", "specs"}
+
+# Common English words ending in "test"/"tests" that are not test files.
+_TEST_STEM_DENYLIST = {
+    "latest", "fastest", "greatest", "contest", "contests",
+    "protest", "protests", "request", "requests", "manifest",
+    "manifests", "suggest", "interest", "interests", "harvest",
+}
+
+
+def is_test_path(rel_path: str) -> bool:
+    """Heuristically decide whether ``rel_path`` is a test file/directory.
+
+    Used to de-prioritize (not exclude) test files in identifier search and to
+    power the optional source-only scan mode. Matching is best-effort across
+    common conventions: ``Tests/`` directories, ``*Tests.swift``, ``test_*.py``,
+    ``*_test.go``, ``*.spec.ts``, ``*.test.js``, etc.
+    """
+    p = rel_path.replace("\\", "/").lower()
+    segments = [s for s in p.split("/") if s]
+    if not segments:
+        return False
+
+    for seg in segments[:-1]:
+        if seg in _TEST_DIR_NAMES:
+            return True
+        if seg.endswith("tests") and seg not in _TEST_STEM_DENYLIST:
+            return True
+
+    name = segments[-1]
+    stem = name.rsplit(".", 1)[0]
+    if ".spec." in name or ".test." in name:
+        return True
+    if stem.startswith("test_"):
+        return True
+    if stem in _TEST_STEM_DENYLIST:
+        return False
+    if stem.endswith("_test") or stem.endswith("test") or stem.endswith("tests"):
+        return True
+    return False
+
+
 def _looks_binary(path: str) -> bool:
     """Heuristically detect binary files by sniffing for NUL bytes."""
     try:

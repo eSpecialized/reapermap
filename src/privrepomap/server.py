@@ -24,10 +24,14 @@ os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 
 from fastmcp import FastMCP, settings
 
-from .filescan import find_src_files, read_text
+from .filescan import find_src_files, is_test_path, read_text
 from .redact import redact
 from .repomap import RepoMap
 from .tokenizer import count_tokens
+
+# Multiplier applied to a match's rank when it lives in a test file, so that
+# canonical (non-test) definitions win for architectural identifier searches.
+TEST_PATH_RANK_PENALTY = 0.1
 
 # Logging: errors only, to stderr (stdout is the MCP channel).
 logging.basicConfig(level=logging.ERROR, format="%(levelname)s %(name)s: %(message)s")
@@ -224,7 +228,11 @@ def _run_search_identifiers(
         file_reader_func=read_text,
         output_handler_funcs={"info": log.info, "warning": log.warning, "error": log.error},
         verbose=False,
-        exclude_unranked=True,
+        # Keep all matching definitions for recall: with working PageRank an
+        # unreferenced definition can fall below the unranked threshold, so we
+        # rely on the result ordering (exact-match + test penalty) instead of
+        # dropping low-rank files outright.
+        exclude_unranked=False,
     )
 
     # Determine effective file scope (same logic as repo_map).
@@ -278,15 +286,26 @@ def _run_search_identifiers(
                     fr = file_rank.get(tag.rel_fname, 0.0)
                     scored.append((fr, tag, "ref"))
 
-    # Final sort: highest rank first, then defs before refs, then lexical position, then line.
-    scored.sort(
-        key=lambda x: (
-            -x[0],
-            0 if x[2] == "def" else 1,
-            x[1].name.lower().find(query_lower),
-            x[1].line,
+    # Final ordering balances three signals:
+    #   1. Exact identifier match (canonical definition) outranks substring hits,
+    #      so e.g. `ThreeMatch` beats `ThreeMatchTests` for the query "ThreeMatch".
+    #   2. PageRank/boost score, penalized for test files so non-test definitions
+    #      surface first on architectural queries.
+    #   3. Definitions before references, then match position and line.
+    def _sort_key(item: tuple) -> tuple:
+        raw_score, tag, kind = item
+        is_test = is_test_path(tag.rel_fname)
+        adjusted = raw_score * (TEST_PATH_RANK_PENALTY if is_test else 1.0)
+        exact = 0 if tag.name.lower() == query_lower else 1
+        return (
+            exact,
+            -adjusted,
+            0 if kind == "def" else 1,
+            tag.name.lower().find(query_lower),
+            tag.line,
         )
-    )
+
+    scored.sort(key=_sort_key)
     scored = scored[:max_results]
 
     results = []
