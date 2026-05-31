@@ -61,7 +61,7 @@ private-repomap/
   tests/
 ```
 
-## Reference (original at `/Users/wthomps/source2025/github/RepoMapper`)
+## Reference (original at `<repoRoot>/source2025/github/RepoMapper`)
 
 - `repomap.py` — CLI entry
 - `repomap_class.py` — core RepoMap: tags cache (diskcache), tree-sitter parse via grep-ast, PageRank (networkx), token-budget binary search, `render_tree` (grep_ast `TreeContext`)
@@ -96,9 +96,9 @@ Starting: *Create README and verify implementation* (5/5)
 
 Everything works end-to-end. Let me check for any static errors and update my progress notes.     
 
-Checked [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/repomap.py), [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/cli.py), [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/server.py), [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/filescan.py), no problems found
+Checked [](file://<repoRoot>/source2025/reapermap/src/privrepomap/repomap.py), [](file://<repoRoot>/source2025/reapermap/src/privrepomap/cli.py), [](file://<repoRoot>/source2025/reapermap/src/privrepomap/server.py), [](file://<repoRoot>/source2025/reapermap/src/privrepomap/filescan.py), no problems found
 
-Updated memory file [](file:///Users/wthomps/Library/Application%20Support/Code%20-%20Insiders/User/workspaceStorage/eaa2e7427b336f0e7318f8d8e9b4335e/GitHub.copilot-chat/memory-tool/memories/YTAxNjljNjgtOGQyYS00NzBlLTlhNWUtYWU2MWJjNDQxMDE3/repomap-rebuild.md)
+Updated memory file [](file://<repoRoot>/Library/Application%20Support/Code%20-%20Insiders/User/workspaceStorage/eaa2e7427b336f0e7318f8d8e9b4335e/GitHub.copilot-chat/memory-tool/memories/YTAxNjljNjgtOGQyYS00NzBlLTlhNWUtYWU2MWJjNDQxMDE3/repomap-rebuild.md)
 
 Phases 1–4 are complete and verified. Here's what was built in the workspace:
 
