@@ -41,7 +41,7 @@ This adds it under a distinct name (`privrepomap`), so your current RepoMapper t
 Switch the chat to **Agent** mode, then reference the two tools. `project_root` must be an **absolute path**.
 
 - **Repo map** — ask: *"Use the `repo_map` tool with project_root `/absolute/path/to/your/repo` and give me the structural overview."*
-- **Identifier search** — ask: *"Use `search_identifiers` with project_root `/absolute/path/to/your/repo` and query `SomeFunctionName`."*
+- **Identifier search** — ask: *"Use `search_identifiers` with project_root `/absolute/path/to/your/repo` and query `SomeFunctionName`."* (optionally pass chat_files or mentioned_idents for even better ranking).
 
 **Tool signatures:**
 
@@ -49,9 +49,15 @@ Switch the chat to **Agent** mode, then reference the two tools. `project_root` 
 repo_map(project_root, chat_files?, other_files?, token_limit=8192, mentioned_files?, mentioned_idents?, …)
   → { "map": str, "report": {…} }
 
-search_identifiers(project_root, query, max_results=50, context_lines=2, …)
-  → { "results": [...] }
+search_identifiers(
+  project_root, query,
+  max_results=50, context_lines=2,
+  chat_files?, other_files?, mentioned_files?, mentioned_idents?, …
+)
+  → { "results": [ {file, line, name, kind, context, rank}, ... ], "report": {...} }
 ```
+
+The new optional context parameters on `search_identifiers` let you pass the same `chat_files` / `mentioned_idents` you already use with `repo_map`. This routes the search through the PageRank + boost machinery so primary definitions jump to the top (the main quality fix from the review).
 
 ---
 

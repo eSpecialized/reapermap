@@ -22,7 +22,7 @@ file discovery
   -> CLI or MCP output
 ```
 
-1. `filescan.find_src_files` discovers candidate files while respecting `.gitignore`, secret-file rules, size limits, binary detection, dependency/build directory skips, and the local tag cache directory.
+1. `filescan.find_src_files` discovers candidate files while respecting `.gitignore` (root + nested, with early dir pruning), secret-file rules, size limits, binary detection, an expanded set of dependency/build/worktree/Xcode directory skips (case-insensitive), and the local tag cache directory.
 2. `RepoMap.get_tags` reads fresh tags from the persistent cache or calls `RepoMap.get_tags_raw`.
 3. `RepoMap.get_tags_raw` resolves a language, loads a bundled `.scm` tags query, parses with tree-sitter, and emits `Tag` records for definitions and references.
 4. `RepoMap.get_ranked_tags` builds a NetworkX graph from references to definitions and ranks files with PageRank plus boosts for chat files, mentioned files, and mentioned identifiers.
@@ -67,7 +67,7 @@ Important symbols:
 - `read_text`: central text read helper that refuses secret files and oversized files.
 - `is_secret_file`: basename-based secret-file classifier.
 - `_looks_binary`: NUL-byte binary sniffing helper.
-- `_load_gitignore`: loads root `.gitignore` patterns plus hardcoded cache/secret ignores.
+- `_load_gitignore` / `_collect_gitignore_patterns`: loads root + all nested `.gitignore` files (with practical subdir prefixing for the spec), plus hardcoded cache/secret ignores. Early directory pruning uses the resulting spec.
 - `SKIP_DIRS`, `SECRET_BASENAMES`, `SECRET_PREFIXES`, `SECRET_SUFFIXES`, `SECRET_ALLOWLIST`, `MAX_FILE_BYTES`: scanning policy constants.
 
 This module is the choke point for avoiding secret-looking files, binary files, large files, dependency/build directories, and ignored paths.
@@ -136,7 +136,7 @@ FastMCP stdio server.
 Important symbols:
 
 - `repo_map`: MCP tool that mirrors the CLI map flow and returns `{ "map": str, "report": {...} }` or `{ "error": str }`.
-- `search_identifiers`: MCP tool that scans tags and returns matching definitions/references with redacted context.
+- `search_identifiers`: MCP tool that now routes through `get_ranked_tags` (PageRank + boosts) so high-centrality definitions surface first. Returns matches with explicit `rank` values plus a `report` for symmetry with `repo_map`. Supports the same optional `chat_files` / `mentioned_*` context parameters.
 - `main`: runs the stdio MCP server.
 - `_token_counter`: heuristic token counter callback for server calls.
 

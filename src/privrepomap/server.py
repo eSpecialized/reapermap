@@ -153,12 +153,19 @@ async def search_identifiers(
     context_lines: int = 2,
     include_definitions: bool = True,
     include_references: bool = True,
+    # New optional context params (mirrors repo_map) so ranking + boosts can be applied.
+    chat_files: Optional[List[str]] = None,
+    other_files: Optional[List[str]] = None,
+    mentioned_files: Optional[List[str]] = None,
+    mentioned_idents: Optional[List[str]] = None,
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     """Search code identifiers by name (offline, secret-redacted).
 
     Use a bare identifier name (no prefixes/suffixes). The match is
-    case-insensitive. Returns matches with file, line, kind, and context. The
-    caller is trusted to provide an allowed local root and reasonable limits.
+    case-insensitive. When chat_files / mentioned_* are supplied the results
+    are ranked using the same PageRank + boost machinery as repo_map, so
+    primary architectural definitions surface first.
 
     :param project_root: Absolute path to the project root.
     :param query: Identifier name to search for.
@@ -166,67 +173,146 @@ async def search_identifiers(
     :param context_lines: Lines of context around each match.
     :param include_definitions: Include definition matches.
     :param include_references: Include reference matches.
-    :returns: ``{"results": [...]}`` or ``{"error": str}``.
+    :param chat_files: Files in active context (highest boost for ranking).
+    :param other_files: Explicit file list to restrict the search scope.
+    :param mentioned_files: Mentioned files (mid boost).
+    :param mentioned_idents: Mentioned identifiers (strong boost for exact name matches).
+    :param force_refresh: Bypass in-memory caches (tags are still mtime-based).
+    :returns: ``{"results": [...], "report": {...}}`` or ``{"error": str}``.
     """
-    if not os.path.isdir(project_root):
-        return {"error": f"Project root directory not found: {project_root}"}
-
-    root_path = Path(project_root).resolve()
-
-    def _run() -> Dict[str, Any]:
-        repo_mapper = RepoMap(
-            root=str(root_path),
-            token_counter_func=_token_counter,
-            file_reader_func=read_text,
-            output_handler_funcs={"info": log.info, "warning": log.warning, "error": log.error},
-            verbose=False,
-            exclude_unranked=True,
-        )
-
-        all_files = find_src_files(str(root_path))
-        all_tags = []
-        for file_path in all_files:
-            try:
-                rel_path = str(Path(file_path).relative_to(root_path))
-            except ValueError:
-                rel_path = file_path
-            all_tags.extend(repo_mapper.get_tags(file_path, rel_path))
-
-        query_lower = query.lower()
-        matching = [
-            tag for tag in all_tags
-            if query_lower in tag.name.lower()
-            and (
-                (tag.kind == "def" and include_definitions)
-                or (tag.kind == "ref" and include_references)
-            )
-        ]
-        matching.sort(key=lambda t: (t.kind != "def", t.name.lower().find(query_lower)))
-        matching = matching[:max_results]
-
-        results = []
-        for tag in matching:
-            file_path = str(root_path / tag.rel_fname)
-            start_line = max(1, tag.line - context_lines)
-            end_line = tag.line + context_lines
-            context = repo_mapper.render_tree(
-                file_path, tag.rel_fname, list(range(start_line, end_line + 1))
-            )
-            if context:
-                results.append({
-                    "file": tag.rel_fname,
-                    "line": tag.line,
-                    "name": tag.name,
-                    "kind": tag.kind,
-                    "context": redact(context),
-                })
-        return {"results": results}
-
     try:
-        return await asyncio.to_thread(_run)
+        return await asyncio.to_thread(
+            _run_search_identifiers,
+            project_root=project_root,
+            query=query,
+            max_results=max_results,
+            context_lines=context_lines,
+            include_definitions=include_definitions,
+            include_references=include_references,
+            chat_files=chat_files,
+            other_files=other_files,
+            mentioned_files=mentioned_files,
+            mentioned_idents=mentioned_idents,
+            force_refresh=force_refresh,
+        )
     except Exception as exc:
         log.exception("Error searching identifiers")
         return {"error": f"Error searching identifiers: {exc}"}
+
+
+def _run_search_identifiers(
+    project_root: str,
+    query: str,
+    max_results: int = 50,
+    context_lines: int = 2,
+    include_definitions: bool = True,
+    include_references: bool = True,
+    chat_files: Optional[List[str]] = None,
+    other_files: Optional[List[str]] = None,
+    mentioned_files: Optional[List[str]] = None,
+    mentioned_idents: Optional[List[str]] = None,
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
+    """Synchronous implementation for search_identifiers."""
+    if not os.path.isdir(project_root):
+        return {"error": f"Project root directory not found: {project_root}"}
+    root_path = Path(project_root).resolve()
+
+    repo_mapper = RepoMap(
+        root=str(root_path),
+        token_counter_func=_token_counter,
+        file_reader_func=read_text,
+        output_handler_funcs={"info": log.info, "warning": log.warning, "error": log.error},
+        verbose=False,
+        exclude_unranked=True,
+    )
+
+    # Determine effective file scope (same logic as repo_map).
+    chat_list = chat_files or []
+    abs_chat_files = [str(root_path / f) for f in chat_list]
+    chat_set = set(abs_chat_files)
+
+    if other_files:
+        effective_other = [str(root_path / f) for f in other_files]
+    else:
+        effective_other = find_src_files(str(root_path))
+
+    abs_other_files = [f for f in effective_other if f not in chat_set]
+
+    mentioned_fnames_set = set(mentioned_files) if mentioned_files else None
+    mentioned_idents_set = set(mentioned_idents) if mentioned_idents else None
+
+    # Go through the ranked path (the key fix for the review complaint).
+    # This gives us PageRank + chat/mentioned boosts for free.
+    ranked_defs, file_report = repo_mapper.get_ranked_tags(
+        abs_chat_files, abs_other_files, mentioned_fnames_set, mentioned_idents_set
+    )
+
+    # Build a quick lookup of the best rank per file (post-boost).
+    file_rank: Dict[str, float] = {}
+    for score, tag in ranked_defs:
+        rel = tag.rel_fname
+        if rel not in file_rank or score > file_rank[rel]:
+            file_rank[rel] = score
+
+    query_lower = query.lower()
+
+    # Matching defs come from the already-ranked list (best first).
+    scored: List[tuple] = []
+    if include_definitions:
+        for score, tag in ranked_defs:
+            if query_lower in tag.name.lower():
+                scored.append((score, tag, "def"))
+
+    # Refs (if requested) require a second pass over the effective files;
+    # they get the file's rank (no per-ref boost) so architectural context still wins.
+    if include_references:
+        all_files_for_refs = abs_chat_files + abs_other_files
+        for fp in all_files_for_refs:
+            try:
+                rel = str(Path(fp).relative_to(root_path))
+            except ValueError:
+                rel = fp
+            for tag in repo_mapper.get_tags(fp, rel):
+                if tag.kind == "ref" and query_lower in tag.name.lower():
+                    fr = file_rank.get(tag.rel_fname, 0.0)
+                    scored.append((fr, tag, "ref"))
+
+    # Final sort: highest rank first, then defs before refs, then lexical position, then line.
+    scored.sort(
+        key=lambda x: (
+            -x[0],
+            0 if x[2] == "def" else 1,
+            x[1].name.lower().find(query_lower),
+            x[1].line,
+        )
+    )
+    scored = scored[:max_results]
+
+    results = []
+    for score, tag, kind in scored:
+        abs_f = str(root_path / tag.rel_fname)
+        start_line = max(1, tag.line - context_lines)
+        end_line = tag.line + context_lines
+        context = repo_mapper.render_tree(abs_f, tag.rel_fname, list(range(start_line, end_line + 1)))
+        if context:
+            results.append(
+                {
+                    "file": tag.rel_fname,
+                    "line": tag.line,
+                    "name": tag.name,
+                    "kind": kind,
+                    "context": redact(context),
+                    "rank": round(score, 4),
+                }
+            )
+
+    report = {
+        "total_files_considered": file_report.total_files_considered,
+        "definition_matches": file_report.definition_matches,
+        "reference_matches": file_report.reference_matches,
+    }
+    return {"results": results, "report": report}
 
 
 def main() -> None:

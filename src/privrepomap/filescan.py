@@ -2,11 +2,13 @@
 
 Walks a repository and yields source files to consider for the map while:
 
-* respecting ``.gitignore`` (and nested ``.gitignore`` files) via ``pathspec``,
+* respecting ``.gitignore`` (including nested ``.gitignore`` files) via ``pathspec``
+  with early directory pruning and a practical prefix-based collector,
 * skipping secret files (``.env``, ``*.pem``, ``id_rsa``, ``*.key``,
   ``credentials*``, ``.aws`` …),
 * skipping binary and oversized files,
-* skipping VCS / build / dependency directories.
+* skipping VCS / build / dependency directories (expanded SKIP list + globs,
+  case-insensitive on macOS).
 
 Reading files is also centralized here so size limits are enforced before any
 content is loaded into memory.
@@ -14,23 +16,57 @@ content is loaded into memory.
 
 from __future__ import annotations
 
+import fnmatch
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 try:
     import pathspec
 except ImportError:  # pragma: no cover - dependency is declared in pyproject
     pathspec = None  # type: ignore
 
-# Directories never worth scanning.
+# Directories never worth scanning (case-insensitive match on macOS/Windows).
 SKIP_DIRS = {
     ".git", ".hg", ".svn",
     "node_modules", "__pycache__", "venv", ".venv", "env",
     ".mypy_cache", ".pytest_cache", ".ruff_cache",
-    "dist", "build", ".eggs", ".tox",
+    "dist", "build", "Build", ".eggs", ".tox",
     ".idea", ".vscode",
+    # Xcode / Swift / Apple build artifacts (review: Derived*, .claude/worktrees, etc.)
+    "DerivedData", "DerivedSources", "xcuserdata", "xcshareddata",
+    "Pods", "Carthage", ".swiftpm",
+    # Agent / worktree pollution
+    ".claude", "worktrees",
+    # Other common build / packaging / env dirs
+    ".build", "target", "out", "bin", "obj",
+    ".next", ".nuxt", ".svelte-kit", "coverage", ".coverage", "htmlcov",
+    "tmp", "temp", "logs", ".gradle", ".mvn", "vendor", "third_party",
+    ".direnv", ".devenv", "result", "dist-newstyle",
 }
+
+_SKIP_DIRS_LOWER: Set[str] = {s.lower() for s in SKIP_DIRS}
+
+# Glob patterns for additional directory pruning (fnmatch, case-insensitive in practice).
+SKIP_DIR_GLOBS: List[str] = [
+    "Derived*",
+    "*.xcworkspace",
+    "*.xcodeproj",
+    "*.build",
+    "build-*",
+]
+
+# Design note on ignore strategy (defense in depth for Xcode/Swift and similar trees):
+# 1. SKIP_DIRS + SKIP_DIR_GLOBS + case-folded matching: fast, unconditional prune of
+#    conventional junk (build/, DerivedData/, .claude/, Pods/, etc.). Catches the
+#    majority of pollution even when the project has no .gitignore or the user
+#    calls with respect_gitignore=False.
+# 2. .gitignore (via pathspec): user policy. We now load root + nested files,
+#    rewrite nested patterns with directory prefixes, and apply the resulting
+#    spec both for early *directory* pruning (huge perf win) and per-file filtering.
+# 3. Secret/size/binary checks are always applied (is_secret_file, read_text, etc.).
+# The combination makes the default experience much quieter on real projects
+# while still allowing callers to pass explicit other_files for full control.
 
 # Filenames / patterns that indicate secrets — always skipped.
 SECRET_BASENAMES = {
@@ -73,20 +109,27 @@ def _looks_binary(path: str) -> bool:
     return b"\x00" in chunk
 
 
-def _load_gitignore(root: Path) -> Optional["pathspec.PathSpec"]:
-    """Load gitignore patterns from the repo root, if any."""
+def _collect_gitignore_patterns(root: Path) -> List[str]:
+    """Collect patterns from the root .gitignore plus all nested .gitignore files.
+
+    Nested patterns are rewritten with a directory prefix so that a single
+    PathSpec (matched against relpaths from the repo root) implements the
+    intended gitignore semantics for the common case of whole-directory ignores
+    (``build/``, ``DerivedData/``, etc.) placed in subdirectories.
+
+    This is a practical, best-effort implementation rather than a perfect
+    clone of git's negation/ancestor stacking rules. It is sufficient to
+    respect the .gitignore files that real projects (including Xcode/Swift ones)
+    actually use to hide build artifacts.
+    """
     if pathspec is None:
-        return None
+        return []
+
     patterns: List[str] = []
-    gitignore = root / ".gitignore"
-    if gitignore.is_file():
-        try:
-            patterns.extend(gitignore.read_text(encoding="utf-8", errors="ignore").splitlines())
-        except OSError:
-            pass
-    # Always ignore our own cache and obvious secret patterns even if the repo
-    # has no .gitignore.
-    patterns.extend([
+
+    # Always-ignore patterns (cache + secrets) — these apply globally even if
+    # the project has no .gitignore at all. They are intentionally not prefixed.
+    always_patterns = [
         f"{TAGS_CACHE_PREFIX}*/",
         ".env",
         ".env.*",
@@ -94,7 +137,66 @@ def _load_gitignore(root: Path) -> Optional["pathspec.PathSpec"]:
         "*.key",
         "id_rsa*",
         "credentials*",
-    ])
+    ]
+    patterns.extend(always_patterns)
+
+    # Find every .gitignore under root, using a pruned walk so we don't waste
+    # time (or risk reading secrets) inside build/ or node_modules trees.
+    gitignore_files: List[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames
+            if d.lower() not in _SKIP_DIRS_LOWER
+            and not any(fnmatch.fnmatch(d, g) or fnmatch.fnmatch(d.lower(), g.lower()) for g in SKIP_DIR_GLOBS)
+            and not d.startswith(TAGS_CACHE_PREFIX)
+            and not (d.startswith(".") and d not in {".github"})
+        ]
+        if ".gitignore" in filenames:
+            gitignore_files.append(Path(dirpath) / ".gitignore")
+
+    for gi_path in gitignore_files:
+        try:
+            lines = gi_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+
+        # Compute the directory prefix for this .gitignore (relative to root).
+        try:
+            rel_dir = gi_path.parent.relative_to(root)
+            prefix = str(rel_dir).replace(os.sep, "/") if str(rel_dir) != "." else ""
+        except ValueError:
+            prefix = ""
+
+        for raw in lines:
+            p = raw.strip()
+            if not p or p.startswith("#"):
+                continue
+            is_neg = p.startswith("!")
+            if is_neg:
+                p = p[1:].strip()
+            if p.startswith("/"):
+                p = p[1:]
+            if prefix:
+                # Prefix subdir patterns. Keep **/ patterns as-is (they are already global-ish).
+                if not p.startswith("**/"):
+                    p = f"{prefix}/{p}"
+            if is_neg:
+                p = "!" + p
+            patterns.append(p)
+
+    return patterns
+
+
+def _load_gitignore(root: Path) -> Optional["pathspec.PathSpec"]:
+    """Load gitignore patterns from the repo root and all nested .gitignore files.
+
+    Returns a single PathSpec that can be used with relpaths from ``root``.
+    The collected patterns include the project's own ignores plus our own
+    always-ignore rules for the tags cache and common secret files.
+    """
+    if pathspec is None:
+        return None
+    patterns = _collect_gitignore_patterns(root)
     if not patterns:
         return None
     return pathspec.PathSpec.from_lines("gitignore", patterns)
@@ -104,10 +206,11 @@ def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
     """Return absolute paths of scannable source files under ``directory``.
 
     Single files are returned directly (after the secret check). Directories
-    are walked with the skip rules above applied, including ``.gitignore``,
-    binary sniffing, the size cap, dependency/build directories, and the local
-    repo-map cache directory. This is the main discovery boundary used by the
-    CLI and MCP server.
+    are walked with the skip rules above applied, including ``.gitignore``
+    (root + nested, with directory pruning), the expanded SKIP list + globs
+    (Xcode, build, worktree, etc., case-folded), binary sniffing, the size cap,
+    secret files, and the local repo-map cache directory. This is the main
+    discovery boundary used by the CLI and MCP server.
     """
     if os.path.isfile(directory):
         name = os.path.basename(directory)
@@ -124,12 +227,25 @@ def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
     src_files: List[str] = []
     for current, dirs, files in os.walk(root):
         # Prune skip dirs and hidden dirs (but keep walking the root itself).
-        dirs[:] = [
-            d for d in dirs
-            if d not in SKIP_DIRS
-            and not d.startswith(TAGS_CACHE_PREFIX)
-            and not (d.startswith(".") and d not in {".github"})
-        ]
+        # Case-folded + glob support catches macOS Xcode "Build/", "DerivedData", etc.
+        # Also prune directories matched by .gitignore (root + nested via the spec)
+        # so we never descend into huge ignored build/ or DerivedData/ trees.
+        kept_dirs: List[str] = []
+        for d in dirs:
+            if d.lower() in _SKIP_DIRS_LOWER:
+                continue
+            if any(fnmatch.fnmatch(d, g) or fnmatch.fnmatch(d.lower(), g.lower()) for g in SKIP_DIR_GLOBS):
+                continue
+            if d.startswith(TAGS_CACHE_PREFIX):
+                continue
+            if d.startswith(".") and d not in {".github"}:
+                continue
+            if spec is not None:
+                rel = os.path.relpath(os.path.join(current, d), root).replace(os.sep, "/")
+                if spec.match_file(rel) or spec.match_file(rel + "/"):
+                    continue
+            kept_dirs.append(d)
+        dirs[:] = kept_dirs
 
         for fname in files:
             if is_secret_file(fname):
