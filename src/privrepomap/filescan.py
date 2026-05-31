@@ -97,7 +97,7 @@ def _load_gitignore(root: Path) -> Optional["pathspec.PathSpec"]:
     ])
     if not patterns:
         return None
-    return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+    return pathspec.PathSpec.from_lines("gitignore", patterns)
 
 
 def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
