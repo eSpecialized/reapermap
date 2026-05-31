@@ -62,7 +62,7 @@ _PARSER_QUERY_CACHE: Dict[str, tuple] = {}
 
 
 def _get_parser_and_query(lang: str, language, scm_fname: str):
-    """Build/reuse a ``tree_sitter`` Parser and Query for ``lang``."""
+    """Build or reuse a local ``tree_sitter`` Parser and Query for ``lang``."""
     cached = _PARSER_QUERY_CACHE.get(lang)
     if cached is not None:
         return cached
@@ -81,7 +81,13 @@ def _get_parser_and_query(lang: str, language, scm_fname: str):
 
 
 class RepoMap:
-    """Generate a ranked, token-budgeted map of a repository."""
+    """Generate ranked, token-budgeted maps for a repository.
+
+    ``RepoMap`` is the shared engine behind the CLI and MCP server. It extracts
+    tree-sitter tags, ranks definition sites from a defs/refs graph, renders
+    source context, fits the result to a token budget, and redacts final map
+    text before returning it.
+    """
 
     def __init__(
         self,
@@ -121,6 +127,7 @@ class RepoMap:
     # -- caching -----------------------------------------------------------
 
     def load_tags_cache(self) -> None:
+        """Open the persistent tag cache, falling back to memory on failure."""
         cache_dir = self.root / TAGS_CACHE_DIRNAME
         try:
             import diskcache
@@ -131,6 +138,7 @@ class RepoMap:
             self.TAGS_CACHE = {}
 
     def tags_cache_error(self) -> None:
+        """Recreate a corrupt tag cache or fall back to an in-memory cache."""
         try:
             cache_dir = self.root / TAGS_CACHE_DIRNAME
             if cache_dir.exists():
@@ -167,12 +175,14 @@ class RepoMap:
     # -- path helpers ------------------------------------------------------
 
     def get_rel_fname(self, fname: str) -> str:
+        """Return ``fname`` relative to the repo root when possible."""
         try:
             return str(Path(fname).relative_to(self.root))
         except ValueError:
             return fname
 
     def get_mtime(self, fname: str) -> Optional[float]:
+        """Return file mtime, warning and returning ``None`` if missing."""
         try:
             return os.path.getmtime(fname)
         except FileNotFoundError:
@@ -280,7 +290,12 @@ class RepoMap:
         mentioned_fnames: Optional[Set[str]] = None,
         mentioned_idents: Optional[Set[str]] = None,
     ) -> Tuple[List[Tuple[float, Tag]], FileReport]:
-        """Rank definition tags using PageRank over the defs/refs graph."""
+        """Rank definition tags using PageRank over the defs/refs graph.
+
+        Chat files seed personalization. Mentioned identifiers, mentioned
+        files, and chat files then receive multiplicative boosts in the final
+        per-tag score. The returned ``FileReport`` summarizes scan outcomes.
+        """
         if not chat_fnames and not other_fnames:
             return [], FileReport({}, 0, 0, 0)
 
@@ -453,6 +468,7 @@ class RepoMap:
         mentioned_idents: Optional[Set[str]] = None,
         force_refresh: bool = False,
     ) -> Tuple[Optional[str], FileReport]:
+        """Return a cached token-budgeted map for the given file sets."""
         cache_key = (
             tuple(sorted(chat_fnames)),
             tuple(sorted(other_fnames)),
@@ -479,6 +495,7 @@ class RepoMap:
         mentioned_fnames: Optional[Set[str]] = None,
         mentioned_idents: Optional[Set[str]] = None,
     ) -> Tuple[Optional[str], FileReport]:
+        """Build a token-budgeted map by binary-searching ranked tag count."""
         ranked_tags, file_report = self.get_ranked_tags(
             chat_fnames, other_fnames, mentioned_fnames, mentioned_idents
         )
@@ -518,7 +535,13 @@ class RepoMap:
         mentioned_idents: Optional[Set[str]] = None,
         force_refresh: bool = False,
     ) -> Tuple[Optional[str], FileReport]:
-        """Build the repository map. Output is secret-redacted."""
+        """Build and return the repository map plus file report metadata.
+
+        This is the public engine entry point used by the CLI and MCP server.
+        It handles empty inputs, optional budget expansion when there are no
+        chat files, map-cache bypassing, ``RecursionError`` fallback, and final
+        output redaction.
+        """
         if chat_files is None:
             chat_files = []
         if other_files is None:

@@ -30,6 +30,7 @@ def _tool_error(message) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for the offline repository-map workflow."""
     parser = argparse.ArgumentParser(
         prog="privrepomap",
         description="Generate a private, offline structural map of a repository.",
@@ -76,6 +77,12 @@ Examples:
 
 
 def main(argv: List[str] | None = None) -> int:
+    """Run the CLI and return a process-style exit code.
+
+    Expands file/directory inputs with the privacy-aware scanner, constructs
+    the shared ``RepoMap`` engine, and prints redacted map output to stdout.
+    Diagnostics and verbose metadata go to stderr via the output handlers.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
 

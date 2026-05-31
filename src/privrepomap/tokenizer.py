@@ -24,7 +24,7 @@ CHARS_PER_TOKEN = 4.0
 
 
 def estimate_tokens_heuristic(text: str) -> int:
-    """Estimate token count using a chars-per-token heuristic."""
+    """Estimate token count using the fast offline chars-per-token heuristic."""
     if not text:
         return 0
     return max(1, round(len(text) / CHARS_PER_TOKEN))
@@ -58,6 +58,7 @@ def count_tokens(text: str, strategy: str = "heuristic") -> int:
 
     :param text: Text to measure.
     :param strategy: ``"heuristic"`` (default) or ``"pygments"``.
+    :returns: Estimated token count without network-backed tokenizer data.
     """
     if strategy == "pygments":
         return estimate_tokens_pygments(text)

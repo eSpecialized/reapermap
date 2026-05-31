@@ -104,7 +104,10 @@ def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
     """Return absolute paths of scannable source files under ``directory``.
 
     Single files are returned directly (after the secret check). Directories
-    are walked with the skip rules above applied.
+    are walked with the skip rules above applied, including ``.gitignore``,
+    binary sniffing, the size cap, dependency/build directories, and the local
+    repo-map cache directory. This is the main discovery boundary used by the
+    CLI and MCP server.
     """
     if os.path.isfile(directory):
         name = os.path.basename(directory)
@@ -155,7 +158,9 @@ def read_text(filename: str, encoding: str = "utf-8", silent: bool = True) -> Op
     """Read text from ``filename`` with size and error guards.
 
     Returns ``None`` on any failure (missing, too large, decode error). Secret
-    files are refused even if requested directly.
+    files are refused even if requested directly. Repository content reads are
+    routed through this helper by default so scanner and parser paths share the
+    same privacy limits.
     """
     name = os.path.basename(filename)
     if is_secret_file(name):

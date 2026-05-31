@@ -72,7 +72,12 @@ _RULES: List[Tuple[Pattern[str], str]] = [
 
 
 def redact(text: str) -> str:
-    """Return ``text`` with recognized secrets masked."""
+    """Return ``text`` with recognized secrets masked.
+
+    This is a heuristic defense-in-depth layer for rendered output. It covers
+    common token shapes and assignment patterns but is not a formal guarantee
+    that every possible secret representation will be removed.
+    """
     if not text:
         return text
     for pattern, replacement in _RULES:

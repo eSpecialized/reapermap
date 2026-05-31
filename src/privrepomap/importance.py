@@ -1,4 +1,8 @@
-"""Important-file detection used to bias the repository map."""
+"""Conventional important-file detection for docs/config paths.
+
+The current map engine computes these paths for parity and future ranking
+tuning. The helpers are intentionally path-only and do not read file content.
+"""
 
 from __future__ import annotations
 
@@ -51,5 +55,5 @@ def is_important(rel_file_path: str) -> bool:
 
 
 def filter_important_files(file_paths: List[str]) -> List[str]:
-    """Filter a list of relative paths down to the important ones."""
+    """Return only paths that match the conventional important-file rules."""
     return [path for path in file_paths if is_important(path)]

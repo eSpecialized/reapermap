@@ -62,7 +62,8 @@ async def repo_map(
     ``chat_files`` get the highest ranking boost, ``mentioned_files`` a
     mid-level boost, and ``other_files`` a lower one. When ``other_files`` is
     omitted the project root is scanned (respecting ``.gitignore`` and
-    skipping secrets).
+    skipping secrets). The caller is trusted to provide an allowed local root;
+    this tool does not implement sandboxing or authorization.
 
     :param project_root: Absolute path to the project root.
     :param chat_files: Files in active context (highest boost).
@@ -156,7 +157,8 @@ async def search_identifiers(
     """Search code identifiers by name (offline, secret-redacted).
 
     Use a bare identifier name (no prefixes/suffixes). The match is
-    case-insensitive. Returns matches with file, line, kind, and context.
+    case-insensitive. Returns matches with file, line, kind, and context. The
+    caller is trusted to provide an allowed local root and reasonable limits.
 
     :param project_root: Absolute path to the project root.
     :param query: Identifier name to search for.

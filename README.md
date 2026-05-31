@@ -98,6 +98,11 @@ pytest -q
 The `tests/test_offline.py` suite blocks `socket` to verify the engine makes
 no network calls.
 
+## Project docs
+
+- [MAP.md](MAP.md) — source map, module inventory, execution flow, and tests map.
+- [SECURITY.md](SECURITY.md) — practical security notes, mitigations, limitations, and safe-use guidance.
+
 ## License
 
 MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -75,7 +75,11 @@ def _queries_root() -> Optional[Path]:
 
 
 def get_scm_fname(lang: str) -> Optional[str]:
-    """Return the path to the tags query file for ``lang``, or ``None``."""
+    """Return the local tags-query path for ``lang``, or ``None``.
+
+    Resolution uses bundled query files or the trusted ``PRIVREPOMAP_QUERIES``
+    override. It never downloads query data.
+    """
     scm_filename = SCM_FILES.get(lang)
     if not scm_filename:
         return None
