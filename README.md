@@ -1,5 +1,13 @@
 # privrepomap
 
+[![CI](https://github.com/eSpecialized/reapermap/actions/workflows/ci.yml/badge.svg)](https://github.com/eSpecialized/reapermap/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Ruff](https://img.shields.io/badge/lint-ruff-46a2f1.svg)](https://docs.astral.sh/ruff/)
+[![pytest](https://img.shields.io/badge/tests-pytest-0a9edc.svg)](https://docs.pytest.org/)
+[![MCP](https://img.shields.io/badge/MCP-server-6f42c1.svg)](https://modelcontextprotocol.io/)
+[![Offline](https://img.shields.io/badge/privacy-offline%20first-brightgreen.svg)](#privacy-guarantees)
+
 A **private, offline, structural** repository mapper. It produces a
 token-budgeted map of a codebase — function/class signatures and the most
 relevant files — using tree-sitter parsing and PageRank ranking. It ships as
@@ -104,6 +112,19 @@ no network calls.
 pip install -e ".[lint]"
 ruff check src tests
 ```
+
+## Badges
+
+Badges are a quick project status summary. Use them for facts that a reader can
+verify or that this repository actively maintains: CI health, supported Python
+versions, license, test and lint tooling, MCP support, and the offline/privacy
+promise.
+
+The CI badge is backed by `.github/workflows/ci.yml`, so it reflects a real
+build. Static badges such as Python, license, Ruff, pytest, MCP, and offline
+first should be updated whenever the corresponding project metadata or behavior
+changes. Avoid badges for services that are not configured, stale quality claims,
+or package registries where the project is not published.
 
 ## Project docs
 
