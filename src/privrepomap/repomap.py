@@ -224,7 +224,7 @@ class RepoMap:
         try:
             from grep_ast import filename_to_lang
             from grep_ast.tsl import get_language
-            from tree_sitter import Parser, Query, QueryCursor
+            from tree_sitter import QueryCursor
         except ImportError:
             self.output_handlers["error"](
                 "grep-ast and tree-sitter are required."

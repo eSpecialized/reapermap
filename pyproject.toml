@@ -21,6 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
+lint = ["ruff>=0.8.0"]
+dev = ["pytest>=7.0", "ruff>=0.8.0"]
 
 [project.scripts]
 privrepomap = "privrepomap.cli:main"
@@ -34,3 +36,12 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 privrepomap = ["../../queries/**/*.scm"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = [".repomap.tags.cache.v*"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

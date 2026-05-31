@@ -98,6 +98,13 @@ pytest -q
 The `tests/test_offline.py` suite blocks `socket` to verify the engine makes
 no network calls.
 
+## Linting
+
+```bash
+pip install -e ".[lint]"
+ruff check src tests
+```
+
 ## Project docs
 
 - [MAP.md](MAP.md) — source map, module inventory, execution flow, and tests map.
