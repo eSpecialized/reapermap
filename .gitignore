@@ -1,0 +1,32 @@
+# Local tags cache (never commit)
+.repomap.tags.cache.v*/
+**/.repomap.tags.cache.v*/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+credentials*
+.aws/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# OS / editor
+.DS_Store
