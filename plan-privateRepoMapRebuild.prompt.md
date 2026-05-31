@@ -83,3 +83,46 @@ private-repomap/
 1. **Tool/repo name + local path?** Recommend `private-repomap` at `~/source2025/github/private-repomap`.
 2. **Repo creation:** use `gh repo create --private`, or create it manually?
 3. **Coexistence:** replace the current `/usr/local/bin/repomap` + MCP entry, or run side-by-side under a new name first? Recommend **side-by-side** until verified.
+
+# Post Implementation by Opus 4.8 Agent
+
+Ran terminal command:  source .venv/bin/activate && python -m pytest -q -W ignore::DeprecationWarning 2>&1 | tail -25
+
+All 19 tests pass. Let me verify the CLI and MCP server work end-to-end against a real codebase.    
+
+Ran terminal command:  source .venv/bin/activate && echo "=== CLI on own src ===" && privrepomap src/ --map-tokens 800 --verbose 2>&1 | head -30 && echo "..." && echo "=== server imports ===" && python -c "from privrepomap import server; print('server OK, tools registered')"
+
+Starting: *Create README and verify implementation* (5/5)
+
+Everything works end-to-end. Let me check for any static errors and update my progress notes.     
+
+Checked [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/repomap.py), [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/cli.py), [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/server.py), [](file:///Users/wthomps/source2025/reapermap/src/privrepomap/filescan.py), no problems found
+
+Updated memory file [](file:///Users/wthomps/Library/Application%20Support/Code%20-%20Insiders/User/workspaceStorage/eaa2e7427b336f0e7318f8d8e9b4335e/GitHub.copilot-chat/memory-tool/memories/YTAxNjljNjgtOGQyYS00NzBlLTlhNWUtYWU2MWJjNDQxMDE3/repomap-rebuild.md)
+
+Phases 1–4 are complete and verified. Here's what was built in the workspace:
+
+**Structure created**
+- pyproject.toml — offline-only deps (`networkx`, `diskcache`, `grep-ast`, `tree-sitter`, `tree-sitter-language-pack`, `pygments`, `fastmcp`, `pathspec`); **no `tiktoken`**
+- .gitignore, NOTICE, README.md (LICENSE already existed)
+- queries/ — copied 49 `.scm` grammar files
+- privrepomap: tokenizer.py, filescan.py, scm.py, importance.py, repomap.py, redact.py, cli.py, server.py
+- tests: tokenizer, filescan/gitignore, redaction, end-to-end map, and a socket-blocking offline test
+
+**Key outcomes**
+- Offline token estimator replaces tiktoken (heuristic + pygments strategies).
+- .gitignore-aware scanning, secret-file skipping, and regex redaction applied to all output.
+- **19/19 tests pass**, including the network-block proof.
+- CLI verified: produced a token-bounded map (662 tokens under an 800 budget) of its own source; MCP server imports cleanly.
+
+**One notable fix:** the installed `tree-sitter-language-pack` returns a native Rust parser incompatible with `tree_sitter.Query`, so the engine now builds its own `tree_sitter.Parser` + `Query` from the `Language` object. (Also requires Python 3.13, which I used for the venv.)
+
+**Phase 5 needs your confirmation before I proceed.** A few questions:
+
+1. **Create the private GitHub repo now?** I'd run `gh repo create --private` and push this workspace. Confirm before I do anything that touches GitHub.
+2. **Repo name** — keep it as `reapermap` (current folder), or rename to `private-repomap`?
+3. **VS Code MCP wiring** — want me to add an `mcp.json` entry pointing at privrepomap-mcp side-by-side with your current tool (recommended), or replace the existing one?
+
+Completed: *Create README and verify implementation* (5/5)
+
+Made changes.
