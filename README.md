@@ -62,8 +62,8 @@ privrepomap . --token-strategy pygments
 ```
 
 Key flags: `--root`, `--map-tokens`, `--chat-files`, `--other-files`,
-`--mentioned-files`, `--mentioned-idents`, `--exclude-unranked`,
-`--force-refresh`, `--verbose`.
+`--mentioned-files`, `--mentioned-idents`, `--include-glob`, `--exclude-glob`,
+`--source-only`, `--exclude-unranked`, `--force-refresh`, `--verbose`.
 
 ## MCP server
 

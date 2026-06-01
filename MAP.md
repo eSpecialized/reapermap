@@ -34,7 +34,7 @@ file discovery
 
 - `RepoMap`: the central engine. It owns token budget settings, repository root, file/token helper callbacks, output handlers, in-memory map cache, tree-context cache, and persistent tag cache.
 - `Tag`: `namedtuple("Tag", "rel_fname fname line name kind")`. `kind` is `"def"` or `"ref"`.
-- `FileReport`: dataclass with `excluded`, `definition_matches`, `reference_matches`, and `total_files_considered` metadata.
+- `FileReport`: dataclass with `excluded`, `definition_matches`, `reference_matches`, and `total_files_considered` metadata, plus a `references_extracted` property (False signals an edgeless graph and flat ranks).
 - Persistent tag cache: `.repomap.tags.cache.v1/`, backed by `diskcache`, keyed by absolute file path and invalidated by mtime.
 - Parser/query cache: module-level `_PARSER_QUERY_CACHE` in `repomap.py`, keyed by language name.
 - File report metadata: returned by CLI/MCP flows to explain skipped files and tag counts without exposing file contents.
@@ -55,7 +55,7 @@ Important symbols:
 - `main`: expands file/directory inputs, constructs `RepoMap`, calls `get_repo_map`, prints map output, and returns process-style status codes.
 - `_tool_output`, `_tool_warning`, `_tool_error`: route normal output to stdout and diagnostics to stderr.
 
-Key options include `--root`, `--map-tokens`, `--chat-files`, `--other-files`, `--mentioned-files`, `--mentioned-idents`, `--token-strategy`, `--max-context-window`, `--force-refresh`, `--exclude-unranked`, and `--verbose`.
+Key options include `--root`, `--map-tokens`, `--chat-files`, `--other-files`, `--mentioned-files`, `--mentioned-idents`, `--token-strategy`, `--max-context-window`, `--force-refresh`, `--include-glob`, `--exclude-glob`, `--source-only`, `--exclude-unranked`, and `--verbose`.
 
 ### `src/privrepomap/filescan.py`
 

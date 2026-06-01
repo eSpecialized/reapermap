@@ -78,9 +78,13 @@ file to read first.
    cache is wiped and rebuilt via `tags_cache_error()`.
 4. **`repomap.py` ranking** — `get_ranked_tags()` builds a `networkx.MultiDiGraph`
    where an edge goes from a file that *references* an identifier to a file that
-   *defines* it, then runs PageRank. `chat_files` seed the `personalization` vector;
-   final per-tag scores are multiplied by boosts (`BOOST_CHAT`,
-   `BOOST_MENTIONED_IDENT`, `BOOST_MENTIONED_FNAME`).
+   *defines* it, then ranks files with `compute_pagerank()` — a **pure-Python**
+   power-iteration PageRank. (`networkx.pagerank` is *not* used: it routes through a
+   SciPy/NumPy backend that is intentionally not a dependency, so calling it raised
+   at runtime and silently collapsed ranks to flat. Do not reintroduce it.)
+   `chat_files` seed the `personalization` vector; final per-tag scores are
+   multiplied by boosts (`BOOST_CHAT`, `BOOST_MENTIONED_IDENT`,
+   `BOOST_MENTIONED_FNAME`).
 5. **`repomap.py` rendering + budgeting** — `to_tree()` renders ranked tags into source
    snippets via `grep_ast.TreeContext`. `get_ranked_tags_map_uncached()` **binary-searches
    the number of tags** to include so the rendered output fits `max_map_tokens`. Final
