@@ -1,0 +1,5 @@
+ignored_secrets/
+generated/
+nested/ignored/
+*.local
+

@@ -175,7 +175,6 @@ def _collect_gitignore_patterns(root: Path) -> List[str]:
     always_patterns = [
         f"{TAGS_CACHE_PREFIX}*/",
         ".env",
-        ".env.*",
         "*.pem",
         "*.key",
         "id_rsa*",
