@@ -59,6 +59,9 @@ async def repo_map(
     mentioned_idents: Optional[List[str]] = None,
     verbose: bool = False,
     max_context_window: Optional[int] = None,
+    include_globs: Optional[List[str]] = None,
+    exclude_globs: Optional[List[str]] = None,
+    source_only: bool = False,
 ) -> Dict[str, Any]:
     """Generate a structural repository map (offline, secret-redacted).
 
@@ -79,6 +82,9 @@ async def repo_map(
     :param mentioned_idents: Identifiers mentioned in conversation (boosted).
     :param verbose: Verbose logging.
     :param max_context_window: Used to scale the budget when no chat files.
+    :param include_globs: Only scan files matching these globs (when scanning).
+    :param exclude_globs: Skip files matching these globs (when scanning).
+    :param source_only: Skip test files/directories (when scanning).
     :returns: ``{"map": str, "report": {...}}`` or ``{"error": str}``.
     """
     if not os.path.isdir(project_root):
@@ -100,7 +106,12 @@ async def repo_map(
     if other_files:
         effective_other = [str(root_path / f) for f in other_files]
     else:
-        effective_other = find_src_files(str(root_path))
+        effective_other = find_src_files(
+            str(root_path),
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+            source_only=source_only,
+        )
 
     abs_chat_files = [str(root_path / f) for f in chat_files_list]
     chat_set = set(abs_chat_files)
@@ -141,6 +152,7 @@ async def repo_map(
         "excluded": file_report.excluded,
         "definition_matches": file_report.definition_matches,
         "reference_matches": file_report.reference_matches,
+        "references_extracted": file_report.references_extracted,
         "total_files_considered": file_report.total_files_considered,
     }
     return {
@@ -163,13 +175,15 @@ async def search_identifiers(
     mentioned_files: Optional[List[str]] = None,
     mentioned_idents: Optional[List[str]] = None,
     force_refresh: bool = False,
+    source_only: bool = False,
 ) -> Dict[str, Any]:
     """Search code identifiers by name (offline, secret-redacted).
 
     Use a bare identifier name (no prefixes/suffixes). The match is
     case-insensitive. When chat_files / mentioned_* are supplied the results
     are ranked using the same PageRank + boost machinery as repo_map, so
-    primary architectural definitions surface first.
+    primary architectural definitions surface first. Exact-name matches and
+    non-test files are preferred, so canonical definitions outrank test classes.
 
     :param project_root: Absolute path to the project root.
     :param query: Identifier name to search for.
@@ -182,6 +196,7 @@ async def search_identifiers(
     :param mentioned_files: Mentioned files (mid boost).
     :param mentioned_idents: Mentioned identifiers (strong boost for exact name matches).
     :param force_refresh: Bypass in-memory caches (tags are still mtime-based).
+    :param source_only: Restrict the scan to non-test files.
     :returns: ``{"results": [...], "report": {...}}`` or ``{"error": str}``.
     """
     try:
@@ -198,6 +213,7 @@ async def search_identifiers(
             mentioned_files=mentioned_files,
             mentioned_idents=mentioned_idents,
             force_refresh=force_refresh,
+            source_only=source_only,
         )
     except Exception as exc:
         log.exception("Error searching identifiers")
@@ -216,6 +232,7 @@ def _run_search_identifiers(
     mentioned_files: Optional[List[str]] = None,
     mentioned_idents: Optional[List[str]] = None,
     force_refresh: bool = False,
+    source_only: bool = False,
 ) -> Dict[str, Any]:
     """Synchronous implementation for search_identifiers."""
     if not os.path.isdir(project_root):
@@ -243,7 +260,7 @@ def _run_search_identifiers(
     if other_files:
         effective_other = [str(root_path / f) for f in other_files]
     else:
-        effective_other = find_src_files(str(root_path))
+        effective_other = find_src_files(str(root_path), source_only=source_only)
 
     abs_other_files = [f for f in effective_other if f not in chat_set]
 
@@ -330,6 +347,7 @@ def _run_search_identifiers(
         "total_files_considered": file_report.total_files_considered,
         "definition_matches": file_report.definition_matches,
         "reference_matches": file_report.reference_matches,
+        "references_extracted": file_report.references_extracted,
     }
     return {"results": results, "report": report}
 

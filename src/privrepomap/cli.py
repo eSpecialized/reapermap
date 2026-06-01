@@ -69,6 +69,19 @@ Examples:
     parser.add_argument("--max-context-window", type=int, help="Maximum context window size.")
     parser.add_argument("--force-refresh", action="store_true", help="Force refresh of caches.")
     parser.add_argument(
+        "--include-glob", action="append", metavar="GLOB",
+        help="Only include files matching this glob (repeatable). Narrows scan; "
+             "never bypasses secret/size/binary/gitignore guards.",
+    )
+    parser.add_argument(
+        "--exclude-glob", action="append", metavar="GLOB",
+        help="Exclude files matching this glob (repeatable).",
+    )
+    parser.add_argument(
+        "--source-only", action="store_true",
+        help="Exclude test files/directories (e.g. *Tests.swift, test_*.py) from the scan.",
+    )
+    parser.add_argument(
         "--exclude-unranked", action="store_true",
         help="Exclude files with PageRank 0 from the map.",
     )
@@ -109,7 +122,14 @@ def main(argv: List[str] | None = None) -> int:
 
     effective_other_files: List[str] = []
     for spec in path_specs:
-        effective_other_files.extend(find_src_files(spec))
+        effective_other_files.extend(
+            find_src_files(
+                spec,
+                include_globs=args.include_glob,
+                exclude_globs=args.exclude_glob,
+                source_only=args.source_only,
+            )
+        )
 
     root_path = Path(args.root).resolve()
     chat_files = [str(Path(f).resolve()) for f in (args.chat_files or [])]
@@ -160,6 +180,11 @@ def main(argv: List[str] | None = None) -> int:
                 f"Generated map: {len(map_content)} chars, ~{tokens} tokens, "
                 f"{report.definition_matches} defs / {report.reference_matches} refs"
             )
+            if not report.references_extracted:
+                _tool_warning(
+                    "0 references extracted — ranking will be flat. The language's "
+                    "tags query may lack reference captures."
+                )
         print(map_content)
     else:
         _tool_output("No repository map generated.")

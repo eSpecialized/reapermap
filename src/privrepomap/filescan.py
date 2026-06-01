@@ -245,7 +245,21 @@ def _load_gitignore(root: Path) -> Optional["pathspec.PathSpec"]:
     return pathspec.PathSpec.from_lines("gitignore", patterns)
 
 
-def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
+def _matches_any_glob(rel_path: str, basename: str, globs: List[str]) -> bool:
+    """True if the relative path or basename matches any fnmatch glob."""
+    return any(
+        fnmatch.fnmatch(rel_path, g) or fnmatch.fnmatch(basename, g)
+        for g in globs
+    )
+
+
+def find_src_files(
+    directory: str,
+    respect_gitignore: bool = True,
+    include_globs: Optional[List[str]] = None,
+    exclude_globs: Optional[List[str]] = None,
+    source_only: bool = False,
+) -> List[str]:
     """Return absolute paths of scannable source files under ``directory``.
 
     Single files are returned directly (after the secret check). Directories
@@ -254,10 +268,28 @@ def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
     (Xcode, build, worktree, etc., case-folded), binary sniffing, the size cap,
     secret files, and the local repo-map cache directory. This is the main
     discovery boundary used by the CLI and MCP server.
+
+    Optional caller-supplied narrowing (applied on top of, never bypassing, the
+    privacy/skip guards above):
+
+    * ``include_globs`` — when non-empty, keep only files whose relative path or
+      basename matches at least one fnmatch pattern.
+    * ``exclude_globs`` — drop files whose relative path or basename matches any
+      pattern.
+    * ``source_only`` — drop files classified as tests by :func:`is_test_path`.
     """
+    include_globs = include_globs or None
+    exclude_globs = exclude_globs or None
+
     if os.path.isfile(directory):
         name = os.path.basename(directory)
         if is_secret_file(name):
+            return []
+        if source_only and is_test_path(name):
+            return []
+        if include_globs and not _matches_any_glob(name, name, include_globs):
+            return []
+        if exclude_globs and _matches_any_glob(name, name, exclude_globs):
             return []
         return [os.path.abspath(directory)]
 
@@ -295,8 +327,16 @@ def find_src_files(directory: str, respect_gitignore: bool = True) -> List[str]:
                 continue
             abs_path = os.path.join(current, fname)
             rel_path = os.path.relpath(abs_path, root)
+            rel_norm = rel_path.replace(os.sep, "/")
 
             if spec is not None and spec.match_file(rel_path):
+                continue
+
+            if source_only and is_test_path(rel_norm):
+                continue
+            if include_globs and not _matches_any_glob(rel_norm, fname, include_globs):
+                continue
+            if exclude_globs and _matches_any_glob(rel_norm, fname, exclude_globs):
                 continue
 
             try:

@@ -82,3 +82,18 @@ def test_swift_graph_has_edges_and_ranks(tmp_path):
     # With cross-file edges and the no-chat PageRank path, ranks must vary.
     ranks = {round(score, 6) for score, _ in ranked}
     assert len(ranks) > 1, "ranks are flat; graph produced no useful centrality"
+
+
+def test_references_extracted_report_flag(tmp_path):
+    repo = _swift_repo(tmp_path)
+    mapper = _mapper(repo)
+    others = find_src_files(str(repo))
+    _, report = mapper.get_ranked_tags(chat_fnames=[], other_fnames=others)
+    assert report.references_extracted is True
+
+    # A lone definition-only file extracts no references.
+    (tmp_path / "Lonely.swift").write_text("class Lonely {}\n", encoding="utf-8")
+    _, solo = mapper.get_ranked_tags(
+        chat_fnames=[], other_fnames=[str(tmp_path / "Lonely.swift")]
+    )
+    assert solo.references_extracted is False

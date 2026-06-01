@@ -40,6 +40,16 @@ class FileReport:
     reference_matches: int
     total_files_considered: int
 
+    @property
+    def references_extracted(self) -> bool:
+        """True if any reference tags were found.
+
+        When False, the defs->refs graph has no edges and PageRank produces flat
+        ranks. This commonly indicates a language whose tags query lacks
+        ``@name.reference`` captures, and explains why ranking feels uniform.
+        """
+        return self.reference_matches > 0
+
 
 CACHE_VERSION = 1
 TAGS_CACHE_DIRNAME = f".repomap.tags.cache.v{CACHE_VERSION}"
